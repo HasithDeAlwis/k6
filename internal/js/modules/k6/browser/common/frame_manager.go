@@ -541,6 +541,12 @@ func (m *FrameManager) requestStarted(req *Request) {
 		frame.pendingDocumentMu.Unlock()
 	}
 	m.logger.Debugf("FrameManager:requestStarted", "fmid:%d rurl:%s pdoc:nil", m.ID(), req.URL())
+
+	// TODO: Create a Route object that will be sent to the page.route handler.
+	// TODO: Send the Route object to any registered handlers.
+	// TODO: If the handler matches with the given request, we handle the request/Route object.
+	// TODO: If the handler doesn't match we return false and perform a route.continue like in https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/frames.ts#L315
+	// TODO: Perform some tests against PW to ensure that the behaviour matches. Where it doesn't create new issues or resolve there and then.
 }
 
 // Frames returns a list of frames on the page.

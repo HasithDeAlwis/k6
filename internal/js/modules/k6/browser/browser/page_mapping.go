@@ -312,6 +312,17 @@ func mapPage(vu moduleVU, p *common.Page) mapping { //nolint:gocognit,cyclop
 				return mapResponse(vu, resp), nil
 			}), nil
 		},
+		// route(url: string|RegExp|((url: URL) => boolean), handler: ((route: Route, request: Request) => Promise<any>|any), options?: {
+		// 	/**
+		// 	 * How often a route should be used. By default it will be used every time.
+		// 	 */
+		// 	times?: number;
+		// }): Promise<void>;
+		"route": func(opts sobek.Value) (*sobek.Promise, error) {
+			return k6ext.Promise(vu.Context(), func() (any, error) {
+				return nil, nil
+			}), nil
+		},
 		"screenshot": func(opts sobek.Value) (*sobek.Promise, error) {
 			popts := common.NewPageScreenshotOptions()
 			if err := popts.Parse(vu.Context(), opts); err != nil {
