@@ -11,6 +11,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/Soontao/goHttpDigestClient v0.0.0-20170320082612-6d28bb1415c5
 	github.com/andybalholm/brotli v1.1.1
+	github.com/anthropics/anthropic-sdk-go v1.4.0
 	github.com/chromedp/cdproto v0.0.0-20250509201441-70372ae9ef75
 	github.com/evanw/esbuild v0.25.5
 	github.com/fatih/color v1.18.0
@@ -67,7 +68,10 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/cenkalti/backoff/v5 v5.0.2 // indirect
+require (
+	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
+)
 
 require (
 	buf.build/gen/go/gogo/protobuf/protocolbuffers/go v1.36.5-20210810001428-4df00b267f94.1 // indirect
