@@ -5,6 +5,7 @@ import (
 
 	"go.k6.io/k6/ext"
 	"go.k6.io/k6/internal/js/modules/k6"
+	"go.k6.io/k6/internal/js/modules/k6/agent"
 	"go.k6.io/k6/internal/js/modules/k6/browser/browser"
 	"go.k6.io/k6/internal/js/modules/k6/crypto"
 	"go.k6.io/k6/internal/js/modules/k6/crypto/x509"
@@ -45,6 +46,7 @@ func getInternalJSModules() map[string]interface{} {
 		"k6/secrets":     secrets.New(),
 		"k6/timers":      timers.New(),
 		"k6/ws":          ws.New(),
+		"k6/agent":       agent.New(),
 
 		// Experimental modules
 		"k6/experimental/csv":        csv.New(),
