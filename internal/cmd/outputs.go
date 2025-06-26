@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"go.k6.io/k6/internal/js/modules/k6/agent"
 	"sort"
 	"strings"
 
@@ -70,6 +71,9 @@ func getAllOutputConstructors() (map[string]output.Constructor, error) {
 		"web-dashboard": dashboard.New,
 		builtinOutputExperimentalOpentelemetry.String(): func(params output.Params) (output.Output, error) {
 			return opentelemetry.New(params)
+		},
+		"k6-agent": func(params output.Params) (output.Output, error) {
+			return agent.NewOutput(params)
 		},
 	}
 
