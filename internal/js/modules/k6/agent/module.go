@@ -2,11 +2,16 @@ package agent
 
 import (
 	"errors"
+	"fmt"
+
 	"github.com/anthropics/anthropic-sdk-go"
+
 	"github.com/grafana/sobek"
 
+	"go.k6.io/k6/internal/js/modules/k6/browser/browser"
 	"go.k6.io/k6/js/common"
 	"go.k6.io/k6/js/modules"
+	"go.k6.io/k6/js/modules/k6/http"
 	"go.k6.io/k6/js/promises"
 )
 
@@ -35,13 +40,25 @@ func New() *RootModule {
 // NewModuleInstance implements the modules.Module interface and returns a new
 // instance of our module for the given VU.
 func (rm *RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
+	// Check whether the Anthropic API Key is provided
 	_, apiKeyDefined := vu.InitEnv().LookupEnv("ANTHROPIC_API_KEY")
 	if !apiKeyDefined {
 		common.Throw(vu.Runtime(), errors.New("ANTHROPIC_API_KEY must be provided to use the k6/agent"))
 	}
 
+	// Initialize the Anthropic client
 	client := anthropic.NewClient()
 	agent := NewAgent(&client)
+
+	// Set up the HTTP and Browser modules
+	if err := vu.Runtime().Set("http", http.New().NewModuleInstance(vu).Exports().Default); err != nil {
+		common.Throw(vu.Runtime(), err)
+	}
+
+	if err := vu.Runtime().Set("browser", browser.New().NewModuleInstance(vu).Exports().Default.(*browser.JSModule).Browser); err != nil {
+		common.Throw(vu.Runtime(), err)
+	}
+
 	return &ModuleInstance{vu: vu, agent: agent}
 }
 
@@ -86,5 +103,19 @@ func (mi *ModuleInstance) Explore(url sobek.Value) *sobek.Promise {
 }
 
 func (mi *ModuleInstance) exploreImpl(url string) (string, error) {
+	script := fmt.Sprintf(`(async function() {
+		const page = await browser.newPage();
+	
+		try {
+		 	return await page.goto('%s');
+		} catch (err) {
+			return err
+		}
+	}());`, url)
+	_, err := mi.vu.Runtime().RunString(script)
+	if err != nil {
+		return err.Error(), err
+	}
+
 	return "Hello, I'm an agent that will explore: " + url, nil
 }
