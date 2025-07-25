@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"go.k6.io/k6/internal/js/modules/k6/browser/common"
 	"go.k6.io/k6/internal/js/modules/k6/browser/env"
@@ -31,7 +29,6 @@ type BrowserType struct {
 	vu           k6modules.VU
 	hooks        *common.Hooks
 	k6Metrics    *k6ext.CustomMetrics
-	randSrc      *rand.Rand
 	envLookupper env.LookupFunc
 }
 
@@ -46,7 +43,6 @@ func NewBrowserType(vu k6modules.VU) *BrowserType {
 		vu:           vu,
 		hooks:        common.NewHooks(),
 		k6Metrics:    k6ext.RegisterCustomMetrics(env.Registry),
-		randSrc:      rand.New(rand.NewSource(time.Now().UnixNano())), //nolint: gosec
 		envLookupper: env.LookupEnv,
 	}
 }
