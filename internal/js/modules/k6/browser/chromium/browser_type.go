@@ -88,7 +88,6 @@ func (b *BrowserType) initContext(ctx context.Context) context.Context {
 	ctx = k6ext.WithVU(ctx, b.vu)
 	ctx = k6ext.WithCustomMetrics(ctx, b.k6Metrics)
 	ctx = common.WithHooks(ctx, b.hooks)
-	ctx = common.WithIterationID(ctx, fmt.Sprintf("%x", b.randSrc.Uint64()))
 	return ctx
 }
 
@@ -470,7 +469,7 @@ func setFlagsFromK6Options(flags map[string]any, k6opts *k6lib.Options) error {
 func makeLogger(ctx context.Context, envLookup env.LookupFunc) (*log.Logger, error) {
 	var (
 		k6Logger = k6ext.GetVU(ctx).State().Logger
-		logger   = log.New(k6Logger, common.GetIterationID(ctx))
+		logger   = log.New(k6Logger)
 	)
 	if el, ok := envLookup(env.LogLevel); ok {
 		if logger.SetLevel(el) != nil {
