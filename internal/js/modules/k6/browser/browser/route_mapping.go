@@ -7,6 +7,7 @@ import (
 
 	"go.k6.io/k6/internal/js/modules/k6/browser/common"
 	"go.k6.io/k6/internal/js/modules/k6/browser/k6ext"
+	jsCommon "go.k6.io/k6/js/common"
 )
 
 // mapRoute to the JS module.
@@ -18,8 +19,11 @@ func mapRoute(vu moduleVU, route *common.Route) mapping {
 			})
 		},
 		"continue": func(opts sobek.Value) *sobek.Promise {
-			copts := parseContinueOptions(vu.Context(), opts)
+			copts, err := parseContinueOptions(vu.Context(), opts)
 			return k6ext.Promise(vu.Context(), func() (any, error) {
+				if err != nil {
+					return nil, err
+				}
 				return nil, route.Continue(copts)
 			})
 		},
@@ -35,10 +39,10 @@ func mapRoute(vu moduleVU, route *common.Route) mapping {
 	}
 }
 
-func parseContinueOptions(ctx context.Context, opts sobek.Value) common.ContinueOptions {
+func parseContinueOptions(ctx context.Context, opts sobek.Value) (common.ContinueOptions, error) {
 	copts := common.ContinueOptions{}
 	if !sobekValueExists(opts) {
-		return copts
+		return copts, nil
 	}
 
 	rt := k6ext.Runtime(ctx)
@@ -50,13 +54,17 @@ func parseContinueOptions(ctx context.Context, opts sobek.Value) common.Continue
 		case "method":
 			copts.Method = obj.Get(k).String()
 		case "postData":
-			copts.PostData = obj.Get(k).String()
+			bytesData, err := jsCommon.ToBytes(obj.Get(k).Export())
+			if err != nil {
+				return copts, err
+			}
+			copts.PostData = bytesData
 		case "url":
 			copts.URL = obj.Get(k).String()
 		}
 	}
 
-	return copts
+	return copts, nil
 }
 
 func parseFulfillOptions(ctx context.Context, opts sobek.Value) common.FulfillOptions {
