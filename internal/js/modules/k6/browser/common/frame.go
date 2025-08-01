@@ -2167,7 +2167,9 @@ func (f *Frame) WaitForURL(urlPattern string, opts *FrameWaitForURLOptions, jsRe
 
 // WaitForResponse waits for a response that matches the given URL pattern or predicate function.
 // urlOrPredicate can be a string URL pattern, a regex pattern, or a predicate function.
-func (f *Frame) WaitForResponse(urlOrPredicate string, opts *FrameWaitForResponseOptions, jsRegexChecker JSRegexChecker) (*Response, error) {
+func (f *Frame) WaitForResponse(
+	urlOrPredicate string, opts *FrameWaitForResponseOptions, jsRegexChecker JSRegexChecker,
+) (*Response, error) {
 	f.log.Debugf("Frame:WaitForResponse", "fid:%s furl:%q pattern:%s", f.ID(), f.URL(), urlOrPredicate)
 	defer f.log.Debugf("Frame:WaitForResponse:return", "fid:%s furl:%q pattern:%s", f.ID(), f.URL(), urlOrPredicate)
 
@@ -2194,7 +2196,7 @@ func (f *Frame) WaitForResponse(urlOrPredicate string, opts *FrameWaitForRespons
 				case responseCh <- nil:
 				default:
 				}
-				return nil
+				return err
 			}
 			if matched {
 				select {

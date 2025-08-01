@@ -115,7 +115,9 @@ func parseHeaders(headers *sobek.Object) []common.HTTPHeader {
 	return result
 }
 
-func parseWaitForResponseOptions(ctx context.Context, opts sobek.Value, defaultTimeout time.Duration) (*common.FrameWaitForResponseOptions, error) {
+func parseWaitForResponseOptions(
+	ctx context.Context, opts sobek.Value, defaultTimeout time.Duration,
+) (*common.FrameWaitForResponseOptions, error) {
 	ropts := common.NewFrameWaitForResponseOptions(defaultTimeout)
 	if !sobekValueExists(opts) {
 		return ropts, nil

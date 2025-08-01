@@ -1730,7 +1730,9 @@ func (p *Page) WaitForURL(urlPattern string, opts *FrameWaitForURLOptions, jsReg
 
 // WaitForResponse waits for a response that matches the given URL pattern.
 // jsRegexChecker should be non-nil to be able to test against a URL pattern.
-func (p *Page) WaitForResponse(urlPattern string, opts *FrameWaitForResponseOptions, jsRegexChecker JSRegexChecker) (*Response, error) {
+func (p *Page) WaitForResponse(
+	urlPattern string, opts *FrameWaitForResponseOptions, jsRegexChecker JSRegexChecker,
+) (*Response, error) {
 	p.logger.Debugf("Page:WaitForResponse", "sid:%v pattern:%s", p.sessionID(), urlPattern)
 	_, span := TraceAPICall(p.ctx, p.targetID.String(), "page.waitForResponse")
 	defer span.End()
