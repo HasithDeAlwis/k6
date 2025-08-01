@@ -802,3 +802,30 @@ func (o *FrameWaitForURLOptions) Parse(ctx context.Context, opts sobek.Value) er
 	}
 	return nil
 }
+
+// FrameWaitForResponseOptions are options for Frame.waitForResponse and Page.waitForResponse.
+type FrameWaitForResponseOptions struct {
+	Timeout time.Duration
+}
+
+// NewFrameWaitForResponseOptions returns a new FrameWaitForResponseOptions.
+func NewFrameWaitForResponseOptions(defaultTimeout time.Duration) *FrameWaitForResponseOptions {
+	return &FrameWaitForResponseOptions{
+		Timeout: defaultTimeout,
+	}
+}
+
+// Parse parses the frame waitForResponse options.
+func (o *FrameWaitForResponseOptions) Parse(ctx context.Context, opts sobek.Value) error {
+	rt := k6ext.Runtime(ctx)
+	if opts != nil && !sobek.IsUndefined(opts) && !sobek.IsNull(opts) {
+		opts := opts.ToObject(rt)
+		for _, k := range opts.Keys() {
+			switch k {
+			case "timeout":
+				o.Timeout = time.Duration(opts.Get(k).ToInteger()) * time.Millisecond
+			}
+		}
+	}
+	return nil
+}
