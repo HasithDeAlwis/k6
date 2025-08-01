@@ -448,6 +448,31 @@ func mapFrame(vu moduleVU, f *common.Frame) mapping {
 				return nil, f.WaitForURL(val, popts, jsRegexChecker)
 			}), nil
 		},
+		"waitForResponse": func(url sobek.Value, opts sobek.Value) (*sobek.Promise, error) {
+			popts := common.NewFrameWaitForResponseOptions(f.Timeout())
+			if err := popts.Parse(vu.Context(), opts); err != nil {
+				return nil, fmt.Errorf("parsing waitForResponse options: %w", err)
+			}
+
+			var val string
+			switch url.ExportType() {
+			case reflect.TypeOf(string("")):
+				val = fmt.Sprintf("'%s'", url.String()) // Strings require quotes
+			default: // JS Regex, CSS, numbers or booleans
+				val = url.String() // No quotes
+			}
+
+			// Inject JS regex checker for URL pattern matching
+			ctx := vu.Context()
+			jsRegexChecker, err := injectRegexMatcherScript(ctx, vu, f.Page().TargetID())
+			if err != nil {
+				return nil, err
+			}
+
+			return k6ext.Promise(ctx, func() (result any, reason error) {
+				return f.WaitForResponse(val, popts, jsRegexChecker)
+			}), nil
+		},
 	}
 	maps["$"] = func(selector string) *sobek.Promise {
 		return k6ext.Promise(vu.Context(), func() (any, error) {
