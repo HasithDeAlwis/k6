@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -2162,6 +2163,89 @@ func (f *Frame) WaitForURL(urlPattern string, opts *FrameWaitForURLOptions, jsRe
 	}
 	_, err = f.WaitForNavigation(navOpts, jsRegexChecker)
 	return err
+}
+
+// WaitForResponse waits for a response that matches the given URL pattern or predicate function.
+// urlOrPredicate can be a string URL pattern, a regex pattern, or a predicate function.
+func (f *Frame) WaitForResponse(urlOrPredicate string, opts *FrameWaitForResponseOptions, jsRegexChecker JSRegexChecker) (*Response, error) {
+	f.log.Debugf("Frame:WaitForResponse", "fid:%s furl:%q pattern:%s", f.ID(), f.URL(), urlOrPredicate)
+	defer f.log.Debugf("Frame:WaitForResponse:return", "fid:%s furl:%q pattern:%s", f.ID(), f.URL(), urlOrPredicate)
+
+	timeoutCtx, timeoutCancel := context.WithTimeout(f.ctx, opts.Timeout)
+	defer timeoutCancel()
+
+	// Create URL matcher based on the pattern
+	matcher, err := urlMatcher(urlOrPredicate, jsRegexChecker)
+	if err != nil {
+		return nil, fmt.Errorf("parsing URL pattern: %w", err)
+	}
+
+	// Create a channel to receive matching responses
+	responseCh := make(chan *Response, 1)
+	var matcherErr error
+
+	// Create a handler function that will be registered with the page
+	handler := func(event PageOnEvent) error {
+		if event.Response != nil {
+			matched, err := matcher(event.Response.URL())
+			if err != nil {
+				matcherErr = err
+				select {
+				case responseCh <- nil:
+				default:
+				}
+				return nil
+			}
+			if matched {
+				select {
+				case responseCh <- event.Response:
+				default:
+				}
+			}
+		}
+		return nil
+	}
+
+	// Register the handler with the page
+	f.page.eventHandlersMu.Lock()
+	if f.page.eventHandlers[EventPageResponseCalled] == nil {
+		f.page.eventHandlers[EventPageResponseCalled] = make([]PageOnHandler, 0)
+	}
+	f.page.eventHandlers[EventPageResponseCalled] = append(f.page.eventHandlers[EventPageResponseCalled], handler)
+	f.page.eventHandlersMu.Unlock()
+
+	// Clean up handler when done
+	defer func() {
+		f.page.eventHandlersMu.Lock()
+		handlers := f.page.eventHandlers[EventPageResponseCalled]
+		for i, h := range handlers {
+			// Compare function pointers to find our handler
+			if reflect.ValueOf(h).Pointer() == reflect.ValueOf(handler).Pointer() {
+				// Remove the handler by replacing it with the last element and shrinking slice
+				handlers[i] = handlers[len(handlers)-1]
+				f.page.eventHandlers[EventPageResponseCalled] = handlers[:len(handlers)-1]
+				break
+			}
+		}
+		f.page.eventHandlersMu.Unlock()
+	}()
+
+	select {
+	case resp := <-responseCh:
+		if matcherErr != nil {
+			return nil, fmt.Errorf("URL pattern matching error: %w", matcherErr)
+		}
+		if resp == nil {
+			return nil, fmt.Errorf("received nil response due to matcher error")
+		}
+		return resp, nil
+	case <-timeoutCtx.Done():
+		e := &k6ext.UserFriendlyError{
+			Err:     timeoutCtx.Err(),
+			Timeout: opts.Timeout,
+		}
+		return nil, fmt.Errorf("waiting for response %q: %w", urlOrPredicate, e)
+	}
 }
 
 func (f *Frame) adoptBackendNodeID(world executionWorld, id cdp.BackendNodeID) (*ElementHandle, error) {
