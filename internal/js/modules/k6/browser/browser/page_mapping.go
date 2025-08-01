@@ -598,8 +598,8 @@ func mapPage(vu moduleVU, p *common.Page) mapping { //nolint:gocognit,cyclop
 			}), nil
 		},
 		"waitForResponse": func(url sobek.Value, opts sobek.Value) (*sobek.Promise, error) {
-			popts := common.NewFrameWaitForResponseOptions(p.Timeout())
-			if err := popts.Parse(vu.Context(), opts); err != nil {
+			popts, err := parseWaitForResponseOptions(vu.Context(), opts, p.Timeout())
+			if err != nil {
 				return nil, fmt.Errorf("parsing waitForResponse options: %w", err)
 			}
 

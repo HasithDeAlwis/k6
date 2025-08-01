@@ -449,8 +449,8 @@ func mapFrame(vu moduleVU, f *common.Frame) mapping {
 			}), nil
 		},
 		"waitForResponse": func(url sobek.Value, opts sobek.Value) (*sobek.Promise, error) {
-			popts := common.NewFrameWaitForResponseOptions(f.Timeout())
-			if err := popts.Parse(vu.Context(), opts); err != nil {
+			popts, err := parseWaitForResponseOptions(vu.Context(), opts, f.Timeout())
+			if err != nil {
 				return nil, fmt.Errorf("parsing waitForResponse options: %w", err)
 			}
 
