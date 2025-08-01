@@ -802,15 +802,3 @@ func (o *FrameWaitForURLOptions) Parse(ctx context.Context, opts sobek.Value) er
 	}
 	return nil
 }
-
-// FrameWaitForResponseOptions are options for Frame.waitForResponse and Page.waitForResponse.
-type FrameWaitForResponseOptions struct {
-	Timeout time.Duration
-}
-
-// NewFrameWaitForResponseOptions returns a new FrameWaitForResponseOptions.
-func NewFrameWaitForResponseOptions(defaultTimeout time.Duration) *FrameWaitForResponseOptions {
-	return &FrameWaitForResponseOptions{
-		Timeout: defaultTimeout,
-	}
-}

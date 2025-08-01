@@ -117,8 +117,8 @@ func parseHeaders(headers *sobek.Object) []common.HTTPHeader {
 
 func parseWaitForResponseOptions(
 	ctx context.Context, opts sobek.Value, defaultTimeout time.Duration,
-) (*common.FrameWaitForResponseOptions, error) {
-	ropts := common.NewFrameWaitForResponseOptions(defaultTimeout)
+) (*common.PageWaitForResponseOptions, error) {
+	ropts := common.NewPageWaitForResponseOptions(defaultTimeout)
 	if !sobekValueExists(opts) {
 		return ropts, nil
 	}
