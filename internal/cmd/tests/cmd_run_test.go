@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
+
 	"go.k6.io/k6/cloudapi"
 	"go.k6.io/k6/errext/exitcodes"
 	"go.k6.io/k6/internal/build"
@@ -500,9 +501,9 @@ func TestSubMetricThresholdNoData(t *testing.T) {
 
 	assert.Len(t, ts.LoggerHook.Drain(), 0)
 	assert.Contains(t, ts.Stdout.String(), `
-    one....................................: 0   0/s
-      { tag:xyz }..........................: 0   0/s
-    two....................................: 42`)
+    one..................: 0   0/s
+      { tag:xyz }........: 0   0/s
+    two..................: 42`)
 }
 
 func getTestServer(tb testing.TB, routes map[string]http.Handler) *httptest.Server {
@@ -1749,7 +1750,7 @@ func TestRunWithCloudOutputOverrides(t *testing.T) {
 	t.Log(stdout)
 	assert.Contains(t, stdout, "execution: local")
 	assert.Contains(t, stdout, "output: cloud (https://bogus.url/runs/132), json (results.json)")
-	assert.Contains(t, stdout, "iterations.............................: 1")
+	assert.Contains(t, stdout, "iterations...........: 1")
 }
 
 func TestRunWithCloudOutputCustomConfigAndOverridesLegacyCloudOption(t *testing.T) {
@@ -2434,6 +2435,36 @@ func TestTypeScriptSupport(t *testing.T) {
 	assert.Contains(t, stderr, `something 42`)
 }
 
+func TestTypeScriptSupportWithoutAutomaticExtensionResolution(t *testing.T) {
+	t.Parallel()
+	depScript := `
+		export default function(): number {
+			let p: number = 42;
+			return p;
+		}
+	`
+	mainScript := `
+		import bar from "./bar.ts";
+		let s: string = "something";
+		export default function() {
+			console.log(s, bar());
+		};
+	`
+
+	ts := NewGlobalTestState(t)
+	ts.Flags.AutoExtensionResolution = false
+	require.NoError(t, fsext.WriteFile(ts.FS, filepath.Join(ts.Cwd, "test.ts"), []byte(mainScript), 0o644))
+	require.NoError(t, fsext.WriteFile(ts.FS, filepath.Join(ts.Cwd, "bar.ts"), []byte(depScript), 0o644))
+
+	ts.CmdArgs = []string{"k6", "run", "--quiet", "test.ts"}
+
+	cmd.ExecuteWithGlobalState(ts.GlobalState)
+
+	stderr := ts.Stderr.String()
+	t.Log(stderr)
+	assert.Contains(t, stderr, `something 42`)
+}
+
 func TestBasicSecrets(t *testing.T) {
 	// This is the example it will be nice if we can just run it ,but in this case it needs extra arguments so ... maybe not such a great idea
 	t.Parallel()
@@ -2577,13 +2608,13 @@ func TestSummaryExport(t *testing.T) {
 			stdout := ts.Stdout.String()
 			t.Log(stdout)
 
-			assert.Contains(t, stdout, "checks_total.......................: 1")
-			assert.Contains(t, stdout, "checks_succeeded...................: 100.00% 1 out of 1")
-			assert.Contains(t, stdout, "checks_failed......................: 0.00%   0 out of 1")
+			assert.Contains(t, stdout, "checks_total.......: 1")
+			assert.Contains(t, stdout, "checks_succeeded...: 100.00% 1 out of 1")
+			assert.Contains(t, stdout, "checks_failed......: 0.00%   0 out of 1")
 
 			assert.Contains(t, stdout, `CUSTOM
-    custom_iterations......................: 1`)
-			assert.Contains(t, stdout, "iterations.............................: 1")
+    custom_iterations....: 1`)
+			assert.Contains(t, stdout, "iterations...........: 1")
 
 			assertSummaryExport(t, ts.FS)
 		})

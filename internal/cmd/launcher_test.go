@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/grafana/k6deps"
-	"github.com/sirupsen/logrus"
+	"github.com/grafana/k6provider"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -102,7 +102,7 @@ func TestLauncherLaunch(t *testing.T) {
 	testCases := []struct {
 		name            string
 		script          string
-		disableBP       bool
+		disableAER      bool
 		k6Cmd           string
 		k6Args          []string
 		expectProvision bool
@@ -113,9 +113,9 @@ func TestLauncherLaunch(t *testing.T) {
 		expectOsExit    int
 	}{
 		{
-			name:            "disable binary provisioning",
+			name:            "disable automatic extension resolution",
 			k6Cmd:           "cloud",
-			disableBP:       true,
+			disableAER:      true,
 			script:          fakerTest,
 			expectProvision: false,
 			expectCmdRunE:   true,
@@ -151,7 +151,7 @@ func TestLauncherLaunch(t *testing.T) {
 			expectOsExit:    0,
 		},
 		{
-			name:            "script with no dependencies",
+			name:            "script with no extension dependencies",
 			k6Cmd:           "cloud",
 			script:          noDepsTest,
 			expectProvision: false,
@@ -160,7 +160,7 @@ func TestLauncherLaunch(t *testing.T) {
 			expectOsExit:    0,
 		},
 		{
-			name:            "command don't require binary provisioning",
+			name:            "command don't require automatic extension resolution",
 			k6Cmd:           "version",
 			expectProvision: false,
 			expectCmdRunE:   true,
@@ -168,7 +168,7 @@ func TestLauncherLaunch(t *testing.T) {
 			expectOsExit:    0,
 		},
 		{
-			name:            "binary provisioning is not enabled for run command",
+			name:            "automatic extension resolution not enabled for run command",
 			k6Cmd:           "run",
 			script:          noDepsTest,
 			expectProvision: false,
@@ -221,9 +221,9 @@ func TestLauncherLaunch(t *testing.T) {
 			// k6deps uses os package to access files. So we need to use it in the global state
 			ts.FS = fsext.NewOsFs()
 
-			// NewGlobalTestState does not set the Binary provisioning flag even if we set
-			// the K6_BINARY_PROVISIONING variable in the global state, so we do it manually
-			ts.Flags.BinaryProvisioning = !tc.disableBP
+			// NewGlobalTestState does not set the AutoExtensionResolution flag even if we set
+			// the K6_AUTO_EXTENSION_RESOLUTION variable in the global state, so we do it manually
+			ts.Flags.AutoExtensionResolution = !tc.disableAER
 
 			// the exit code is checked by the TestGlobalState when the test ends
 			ts.ExpectedExitCode = tc.expectOsExit
@@ -272,9 +272,9 @@ func TestLauncherViaStdin(t *testing.T) {
 	// k6deps uses os package to access files. So we need to use it in the global state
 	ts.FS = fsext.NewOsFs()
 
-	// NewGlobalTestState does not set the Binary provisioning flag even if we set
-	// the K6_BINARY_PROVISIONING variable in the global state, so we do it manually
-	ts.Flags.BinaryProvisioning = true
+	// NewGlobalTestState does not set the AutoExtensionResolution flag even if we set
+	// the K6_AUTO_EXTENSION_RESOLUTION variable in the global state, so we do it manually
+	ts.Flags.AutoExtensionResolution = true
 
 	// pass script using stdin
 	stdin := bytes.NewBuffer([]byte(requireUnsatisfiedK6Version))
@@ -510,58 +510,46 @@ func TestIOFSBridgeOpen(t *testing.T) {
 	assert.Equal(t, "test123", string(content))
 }
 
-func TestGetBuildServiceURL(t *testing.T) {
+func TestGetProviderConfig(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name                      string
-		buildSrvURL               string
-		enableCommunityExtensions bool
-		expectErr                 bool
-		expectedURL               string
+		name         string
+		token        string
+		expectConfig k6provider.Config
 	}{
 		{
-			name:                      "default build service url",
-			buildSrvURL:               "https://build.srv",
-			enableCommunityExtensions: false,
-			expectErr:                 false,
-			expectedURL:               "https://build.srv/cloud",
+			name:  "no token",
+			token: "",
+			expectConfig: k6provider.Config{
+				BuildServiceURL:  "https://ingest.k6.io/builder/api/v1",
+				BinaryCacheDir:   filepath.Join(".cache", "k6", "builds"),
+				BuildServiceAuth: "",
+			},
 		},
 		{
-			name:                      "enable community extensions",
-			buildSrvURL:               "https://build.srv",
-			enableCommunityExtensions: true,
-			expectErr:                 false,
-			expectedURL:               "https://build.srv/oss",
-		},
-		{
-			name:                      "invalid buildServiceURL",
-			buildSrvURL:               "https://host:port",
-			enableCommunityExtensions: false,
-			expectErr:                 true,
+			name:  "K6_CLOUD_TOKEN set",
+			token: "K6CLOUDTOKEN",
+			expectConfig: k6provider.Config{
+				BuildServiceURL:  "https://ingest.k6.io/builder/api/v1",
+				BinaryCacheDir:   filepath.Join(".cache", "k6", "builds"),
+				BuildServiceAuth: "K6CLOUDTOKEN",
+			},
 		},
 	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			logger := &logrus.Logger{ //nolint:forbidigo
-				Out: io.Discard,
+			ts := tests.NewGlobalTestState(t)
+			if tc.token != "" {
+				ts.Env["K6_CLOUD_TOKEN"] = tc.token
 			}
 
-			flags := state.GlobalFlags{
-				BinaryProvisioning:        true,
-				BuildServiceURL:           tc.buildSrvURL,
-				EnableCommunityExtensions: tc.enableCommunityExtensions,
-			}
+			config := getProviderConfig(ts.GlobalState)
 
-			buildSrvURL, err := getBuildServiceURL(flags, logger)
-			if tc.expectErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expectedURL, buildSrvURL)
-			}
+			assert.Equal(t, tc.expectConfig, config)
 		})
 	}
 }

@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
-	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -14,36 +14,32 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/grafana/k6deps"
 	"github.com/grafana/k6provider"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	"go.k6.io/k6/cloudapi"
 	"go.k6.io/k6/cmd/state"
 	"go.k6.io/k6/ext"
 	"go.k6.io/k6/internal/build"
 	"go.k6.io/k6/lib/fsext"
 )
 
-const (
-	// cloudExtensionsCatalog defines the extensions catalog for cloud supported extensions
-	cloudExtensionsCatalog = "cloud"
-	// communityExtensionsCatalog defines the extensions catalog for community extensions
-	communityExtensionsCatalog = "oss"
-)
-
 // ioFSBridge allows an afero.Fs to implement the Go standard library io/fs.FS.
 type ioFSBridge struct {
+	pwd   string
 	fsext fsext.Fs
 }
 
 // newIofsBridge returns an IOFSBridge from a Fs
-func newIOFSBridge(fs fsext.Fs) fs.FS {
+func newIOFSBridge(fs fsext.Fs, pwd string) fs.FS {
 	return &ioFSBridge{
 		fsext: fs,
+		pwd:   pwd,
 	}
 }
 
 // Open implements fs.Fs Open
 func (b *ioFSBridge) Open(name string) (fs.File, error) {
-	f, err := b.fsext.Open(name)
+	f, err := b.fsext.Open(path.Join(b.pwd, name))
 	if err != nil {
 		return nil, fmt.Errorf("opening file via launcher's bridge: %w", err)
 	}
@@ -93,7 +89,7 @@ func (l *launcher) launch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		l.gs.Logger.
 			WithError(err).
-			Error("Binary provisioning is enabled but it failed to analyze the dependencies." +
+			Error("Automatic extension resolution is enabled but it failed to analyze the dependencies." +
 				" Please, make sure to report this issue by opening a bug report.")
 		return err
 	}
@@ -107,9 +103,8 @@ func (l *launcher) launch(cmd *cobra.Command, args []string) error {
 
 	l.gs.Logger.
 		WithField("deps", deps).
-		Info("Binary Provisioning experimental feature is enabled." +
-			" The current k6 binary doesn't satisfy all dependencies, it's required to" +
-			" provision a custom binary.")
+		Info("Automatic extension resolution is enabled. The current k6 binary doesn't satisfy all dependencies," +
+			" it's required to provision a custom binary.")
 
 	customBinary, err := l.provisioner.provision(deps)
 	if err != nil {
@@ -154,15 +149,19 @@ func (b *customBinary) run(gs *state.GlobalState) error {
 	// in `gs.Stdin` and should be passed to the command
 	cmd.Stdin = gs.Stdin
 
-	// Copy environment variables to the k6 process and skip binary provisioning feature flag to disable it.
-	// This avoids unnecessary re-processing of dependencies in the sub-process.
+	// Copy environment variables to the k6 process skipping auto extension resolution feature flag.
 	env := []string{}
 	for k, v := range gs.Env {
-		if k == state.BinaryProvisioningFeatureFlag {
+		if k == state.AutoExtensionResolution {
 			continue
 		}
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
+	// If auto extension resolution is enabled then
+	// this avoids unnecessary re-processing of dependencies in the sub-process.
+	env = append(env, state.AutoExtensionResolution+"=false")
+	// legacy envvar used in versions v1.0.x and v1.1.x
+	env = append(env, "K6_BINARY_PROVISIONING=false")
 	cmd.Env = env
 
 	// handle signals
@@ -226,7 +225,7 @@ func isCustomBuildRequired(deps k6deps.Dependencies, k6Version string, exts []*e
 		semver, err := semver.NewVersion(version)
 		if err != nil {
 			// ignore built in module if version is not a valid sem ver (e.g. a development version)
-			// if user wants to use this built-in, must disable binary provisioning
+			// if user wants to use this built-in, must disable the automatic extension resolution
 			return true
 		}
 
@@ -249,15 +248,7 @@ func newK6BuildProvisioner(gs *state.GlobalState) provisioner {
 }
 
 func (p *k6buildProvisioner) provision(deps k6deps.Dependencies) (commandExecutor, error) {
-	buildSrv, err := getBuildServiceURL(p.gs.Flags, p.gs.Logger)
-	if err != nil {
-		return nil, err
-	}
-
-	config := k6provider.Config{
-		BuildServiceURL: buildSrv,
-		BinaryCacheDir:  p.gs.Flags.BinaryCache,
-	}
+	config := getProviderConfig(p.gs)
 
 	provider, err := k6provider.NewProvider(config)
 	if err != nil {
@@ -275,23 +266,22 @@ func (p *k6buildProvisioner) provision(deps k6deps.Dependencies) (commandExecuto
 	return &customBinary{binary.Path}, nil
 }
 
-// return the URL to the build service based on the configuration flags defined
-func getBuildServiceURL(flags state.GlobalFlags, logger *logrus.Logger) (string, error) { //nolint:forbidigo
-	buildSrv := flags.BuildServiceURL
-	buildSrvURL, err := url.Parse(buildSrv)
+func getProviderConfig(gs *state.GlobalState) k6provider.Config {
+	config := k6provider.Config{
+		BuildServiceURL: gs.Flags.BuildServiceURL,
+		BinaryCacheDir:  gs.Flags.BinaryCache,
+	}
+
+	token, err := extractToken(gs)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL to binary provisioning build service: %w", err)
+		gs.Logger.WithError(err).Debug("Failed to get cloud token")
 	}
 
-	catalog := cloudExtensionsCatalog
-	if flags.EnableCommunityExtensions {
-		catalog = communityExtensionsCatalog
+	if token != "" {
+		config.BuildServiceAuth = token
 	}
 
-	logger.
-		Debugf("using the %q extensions catalog", catalog)
-
-	return buildSrvURL.JoinPath(catalog).String(), nil
+	return config
 }
 
 func formatDependencies(deps map[string]string) string {
@@ -316,6 +306,7 @@ func analyze(gs *state.GlobalState, args []string) (k6deps.Dependencies, error) 
 	gs.Logger.WithField("source", "sourceRootPath").
 		Debug("Launcher is resolving and reading the test's script")
 	src, _, pwd, err := readSource(gs, sourceRootPath)
+	dopts.RootDir = pwd
 	if err != nil {
 		return nil, fmt.Errorf("reading source for analysis %w", err)
 	}
@@ -333,7 +324,7 @@ func analyze(gs *state.GlobalState, args []string) (k6deps.Dependencies, error) 
 		}
 		dopts.Script.Name = sourceRootPath
 		dopts.Script.Contents = src.Data
-		dopts.Fs = newIOFSBridge(gs.FS)
+		dopts.Fs = newIOFSBridge(gs.FS, pwd)
 	}
 
 	return k6deps.Analyze(dopts)
@@ -347,4 +338,20 @@ func isAnalysisRequired(cmd *cobra.Command) bool {
 	}
 
 	return false
+}
+
+// extractToken gets the cloud token required to access the build service
+// from the environment or from the config file
+func extractToken(gs *state.GlobalState) (string, error) {
+	diskConfig, err := readDiskConfig(gs)
+	if err != nil {
+		return "", err
+	}
+
+	config, _, err := cloudapi.GetConsolidatedConfig(diskConfig.Collectors["cloud"], gs.Env, "", nil, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return config.Token.String, nil
 }
